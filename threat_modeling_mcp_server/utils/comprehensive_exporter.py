@@ -504,21 +504,25 @@ def export_threat_model_files(
             "threats": convert_threats_to_threat_composer_format(state.threats, id_map)
         }
 
-        if include_extended_data:
-            # Nest extended taxonomy under a single namespaced key. Threat
-            # Composer validates top-level keys strictly and rejects unknown
-            # ones, so the previous approach of spreading ~17 extra top-level
-            # keys made the file fail to import. A single namespaced object is
-            # ignored by Threat Composer while preserving the data for other
-            # consumers.
-            threat_model_data["_amazonThreatModeling"] = build_extended_export_data(state)
-
+        # The .tc.json file must satisfy the Threat Composer schema, whose
+        # top-level object is `additionalProperties: false` -- it rejects ANY
+        # key outside its fixed set (schema, applicationInfo, architecture,
+        # dataflow, assumptions, mitigations, assumptionLinks, mitigationLinks,
+        # threats, brainstorm). So extended taxonomy cannot live in this file,
+        # not even under a namespaced key. When requested, it is written to a
+        # separate sidecar file instead, keeping the .tc.json importable.
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(threat_model_data, f, indent=2, ensure_ascii=False)
 
         json_size = os.path.getsize(json_path)
         json_success = True
         logger.info(f"Successfully exported JSON threat model to {json_path}")
+
+        if include_extended_data:
+            extended_path = os.path.join(threatmodel_dir, f"{base_filename}.extended.json")
+            with open(extended_path, "w", encoding="utf-8") as f:
+                json.dump(build_extended_export_data(state), f, indent=2, ensure_ascii=False)
+            logger.info(f"Successfully exported extended data to {extended_path}")
 
     except Exception as e:
         logger.error(f"Failed to export JSON threat model: {str(e)}")
